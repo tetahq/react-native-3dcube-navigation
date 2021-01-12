@@ -6,7 +6,7 @@
     "ios",
     "android"
   ],
-  "version": "1.0.2",
+  "version": "1.0.19",
   "description": "3D cube navigation typescript",
   "main": "index.js",
   "scripts": {
@@ -22,10 +22,16 @@
     "url": "https://github.com/tetahq/react-native-3dcube-navigation/issues"
   },
   "homepage": "https://github.com/tetahq/react-native-3dcube-navigation#readme",
-  "dependencies": {
-    "react": "^16.5.0"
+  "peerDependencies": {
+    "react-native": ">=0.63.0"
   },
   "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-core": "^6.26.3",
+    "babel-preset-react-native": "^4.0.1",
+    "react": "^16.13.1",
+    "react-dom": "^16.13.1",
+    "react-native": "^0.63.4",
     "@types/node": "^14.14.20",
     "@types/react": "^17.0.0",
     "@types/react-native": "^0.63.45",

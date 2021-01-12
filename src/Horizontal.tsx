@@ -1,13 +1,13 @@
-import React, {
-    PureComponent,
-    RefObject
-} from 'react';
+import React, {Component, RefObject} from 'react';
 import {
     Animated,
     Dimensions,
-    PanResponder, PanResponderGestureState,
+    Easing,
+    PanResponder,
+    PanResponderGestureState,
     PanResponderInstance,
-    Platform, ViewStyle
+    Platform,
+    ViewStyle
 } from 'react-native';
 import {
     getAnimatedSlideViewStyles,
@@ -18,15 +18,16 @@ import {
 
 const {width: windowWidth, height: windowHeight} = Dimensions.get('window');
 
-const PERSPECTIVE = Platform.OS === 'ios' ? 2.38 : 1.7;
-const TR_POSITION = Platform.OS === 'ios' ? 2 : 1.5;
+const PERSPECTIVE = Platform.OS === 'ios' ? 2.38 : 2.16;
+const TR_POSITION = Platform.OS === 'ios' ? 2 : 1.4;
 
 export interface CubeNavigationHorizontalProps {
     loop?: boolean;
     expandView?: boolean;
     responderCaptureDx?: number;
     callBackAfterSwipe?: (targetXPosition: number, targetPage: number) => void;
-    callbackOnSwipe?: (isCompleted: boolean) => void;
+    callbackOnSwipe?: (isScroll: boolean) => void;
+    initialPage?: number;
 }
 
 interface CubeNavigationHorizontalState {
@@ -40,7 +41,7 @@ interface Location {
     y: number;
 }
 
-export default class CubeNavigationHorizontal extends PureComponent<CubeNavigationHorizontalProps, CubeNavigationHorizontalState> {
+export default class CubeNavigationHorizontal extends Component<CubeNavigationHorizontalProps, CubeNavigationHorizontalState> {
     static defaultProps: CubeNavigationHorizontalProps = {
         loop: false,
         expandView: false,
@@ -59,12 +60,13 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
         const {
             responderCaptureDx,
             loop,
-            callbackOnSwipe
+            callbackOnSwipe,
+            initialPage
         } = this.props;
 
         this.accessibleAnimatedValue = {x: 0, y: 0};
         this.animatedListenerId = null;
-        this._animatedValue = new Animated.ValueXY({x: 0, y: 0});
+        this._animatedValue = new Animated.ValueXY();
         this._scrollViewRef = null;
 
         this._panResponder = PanResponder.create({
@@ -86,7 +88,9 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
                         this._animatedValue.setOffset({x: -1 * (this.state.fullWidth + windowWidth), y: 0});
                     }
                 }
-                Animated.event([null, {dx: this._animatedValue.x}])(e, gestureState);
+                Animated.event([null, {dx: this._animatedValue.x}], {
+                    useNativeDriver: false
+                })(e, gestureState);
             },
             onPanResponderRelease: (e, gestureState) => {
                 this.onDoneSwiping(gestureState);
@@ -97,15 +101,21 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
         });
 
         this.state = {
-            fullWidth: this.fullWidth,
-            pagePositions: this.pagePositions,
-            currentPage: 0
+            fullWidth: this.fullWidth(),
+            pagePositions: this.pagePositions(),
+            currentPage: initialPage ?? 0
         };
 
+        const {pagePositions, currentPage} = this.state;
+        this._animatedValue.setValue({ x: pagePositions[currentPage], y: 0 });
+        this.accessibleAnimatedValue = { x: pagePositions[this.state.currentPage], y: 0 };
+
+        this.setAccessibleAnimatedValue = this.setAccessibleAnimatedValue.bind(this);
         this.findClosest = this.findClosest.bind(this);
+        this.renderChildren = this.renderChildren.bind(this);
     }
 
-    get fullWidth(): number {
+    fullWidth(): number {
         const {children} = this.props;
 
         if (!Array.isArray(children)) {
@@ -115,7 +125,7 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
         return (children.length - 1) * windowWidth;
     }
 
-    get pagePositions(): number[] {
+    pagePositions(): number[] {
         const {children} = this.props;
 
         if (!Array.isArray(children)) {
@@ -125,15 +135,15 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
         return children.map<number>((child, index) => windowWidth * (-1 * index));
     }
 
-    get computedNormalChildViewStyles(): ViewStyle {
+    getComputedNormalChildViewStyles(): ViewStyle {
         return getNormalChildViewStyles(windowWidth, windowHeight);
     }
 
-    get computedExpandedChildViewStyles(): ViewStyle {
+    getComputedExpandedChildViewStyles(): ViewStyle {
         return getExpandedChildViewStyles(windowWidth, windowHeight);
     }
 
-    get computedExpandStyles(): ViewStyle {
+    getComputedExpandStyles(): ViewStyle {
         if (this.props.expandView) {
             return getExpandedChildViewStyles(windowWidth, windowHeight, true);
         }
@@ -150,15 +160,16 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
     }
 
     findClosest(horizontalPos: number) {
+        const array = this.state.pagePositions;
         let minDiff = 1000;
         let selectedPage = 0;
 
-        for (let index in this.state.pagePositions) {
-            let currentDifference = Math.abs(horizontalPos -  this.state.pagePositions[index]);
+        for (let index = 0; index < array.length; index++) {
+            const currentDifference = Math.abs(horizontalPos - array[index]);
 
             if (currentDifference < minDiff) {
                 minDiff = currentDifference;
-                selectedPage = parseInt(index);
+                selectedPage = index;
             }
         }
 
@@ -175,20 +186,18 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
 
         const mod = gestureState.dx > 0 ? 100 : -100;
 
-        const closestPage = this.findClosest((this._animatedValue.x as any) + mod);
+        const closestPage = this.findClosest(this.accessibleAnimatedValue.x + mod);
 
         let goTo = pagePositions[closestPage];
 
         this._animatedValue.flattenOffset();
 
-        Animated.spring(this._animatedValue, {
+        Animated.timing(this._animatedValue, {
             toValue: {x: goTo, y: 0},
-            friction: 3,
-            tension: 0.6,
-            useNativeDriver: false
-        }).start();
-
-        setTimeout(() => {
+            useNativeDriver: false,
+            duration: 250,
+            easing: Easing.cubic
+        }).start(() => {
             this.setState({
                 currentPage: closestPage
             });
@@ -196,7 +205,7 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
             if (callBackAfterSwipe) {
                 callBackAfterSwipe(goTo, Math.abs(goTo / windowWidth));
             }
-        }, 500);
+        });
     }
 
     scrollTo(page: number, animated: boolean) {
@@ -205,19 +214,23 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
         const shouldBeAnimated = animated == undefined ? true : animated;
 
         if (shouldBeAnimated) {
-            Animated.spring(this._animatedValue, {
+            Animated.timing(this._animatedValue, {
                 toValue: {x: pagePositions[page], y: 0},
-                friction: 4,
-                tension: 0.8,
-                useNativeDriver: false
-            }).start();
+                useNativeDriver: false,
+                easing: Easing.cubic,
+                duration: 250
+            }).start(() => {
+                this.setState({
+                    currentPage: page
+                })
+            });
         } else {
             this._animatedValue.setValue({x: pagePositions[page], y: 0});
-        }
 
-        this.setState({
-            currentPage: page
-        });
+            this.setState({
+                currentPage: page
+            })
+        }
     }
 
     _getTransformsFor(index: number) {
@@ -287,7 +300,7 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
                 pageX + windowWidth - 250,
                 pageX + windowWidth
             ]),
-            outputRange: padOutput([0, 0.6, 1, 0.6, 0]),
+            outputRange: padOutput([0, 0.75, 1, 0.75, 0]),
             extrapolate: 'clamp'
         });
 
@@ -312,7 +325,7 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
         }
     }
 
-    get renderChildren() {
+    renderChildren() {
         const {children, expandView} = this.props;
         const {currentPage} = this.state;
 
@@ -321,10 +334,10 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
         }
 
         return children.map((childItem, index) => {
-            let expandStyle = expandView ? this.computedExpandedChildViewStyles : this.computedNormalChildViewStyles;
+            let expandStyle = expandView ? this.getComputedExpandedChildViewStyles() : this.getComputedNormalChildViewStyles();
             let style = [(childItem as JSX.Element).props.style, expandStyle];
             let childProps: any = { i: index, style };
-            let element = React.cloneElement(childProps, this.props);
+            let element = React.cloneElement(childItem as any, childProps);
             const transforms: any = this._getTransformsFor(index);
 
             return (
@@ -342,10 +355,10 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
     render() {
         return (
             <Animated.View style={rootAnimatedViewStyles} ref={this._scrollViewRef} {...this._panResponder.panHandlers}>
-                <Animated.View style={this.computedExpandStyles}>
-                    {this.renderChildren}
+                <Animated.View style={this.getComputedExpandStyles()}>
+                    {this.renderChildren()}
                 </Animated.View>
             </Animated.View>
-        )
+        );
     }
 }

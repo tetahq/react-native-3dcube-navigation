@@ -1,10 +1,13 @@
-import React, {memo, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, {
+    PureComponent,
+    RefObject
+} from 'react';
 import {
     Animated,
     Dimensions,
     PanResponder, PanResponderGestureState,
     PanResponderInstance,
-    Platform
+    Platform, ViewStyle
 } from 'react-native';
 import {
     getAnimatedSlideViewStyles,
@@ -15,16 +18,21 @@ import {
 
 const {width: windowWidth, height: windowHeight} = Dimensions.get('window');
 
-const PESPECTIVE = Platform.OS === 'ios' ? 2.38 : 1.7;
+const PERSPECTIVE = Platform.OS === 'ios' ? 2.38 : 1.7;
 const TR_POSITION = Platform.OS === 'ios' ? 2 : 1.5;
 
 export interface CubeNavigationHorizontalProps {
     loop?: boolean;
-    scrollLockPage?: number;
     expandView?: boolean;
     responderCaptureDx?: number;
     callBackAfterSwipe?: (targetXPosition: number, targetPage: number) => void;
     callbackOnSwipe?: (isCompleted: boolean) => void;
+}
+
+interface CubeNavigationHorizontalState {
+    fullWidth: number;
+    pagePositions: number[];
+    currentPage: number;
 }
 
 interface Location {
@@ -32,115 +40,121 @@ interface Location {
     y: number;
 }
 
-export default memo<CubeNavigationHorizontalProps>((props) => {
-    const {
-        children,
-        callBackAfterSwipe,
-        callbackOnSwipe,
-        expandView,
-        loop,
-        responderCaptureDx,
-        scrollLockPage
-    } = props;
+export default class CubeNavigationHorizontal extends PureComponent<CubeNavigationHorizontalProps, CubeNavigationHorizontalState> {
+    static defaultProps: CubeNavigationHorizontalProps = {
+        loop: false,
+        expandView: false,
+        responderCaptureDx: 60
+    };
 
-    // Memos
-    const fullWidth = useMemo<number>(() => {
+    animatedListenerId: string | null;
+    accessibleAnimatedValue: Location;
+    _scrollViewRef: RefObject<typeof Animated.View> | null;
+    _panResponder: PanResponderInstance;
+    _animatedValue: Animated.ValueXY;
+
+    constructor(props: CubeNavigationHorizontalProps) {
+        super(props);
+
+        const {
+            responderCaptureDx,
+            loop,
+            callbackOnSwipe
+        } = this.props;
+
+        this.accessibleAnimatedValue = {x: 0, y: 0};
+        this.animatedListenerId = null;
+        this._animatedValue = new Animated.ValueXY({x: 0, y: 0});
+        this._scrollViewRef = null;
+
+        this._panResponder = PanResponder.create({
+            onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
+                return Math.abs(gestureState.dx) > responderCaptureDx!
+            },
+            onPanResponderGrant: () => {
+                if (callbackOnSwipe) {
+                    callbackOnSwipe(true);
+                }
+                this._animatedValue.stopAnimation();
+                this._animatedValue.setOffset({x: this.accessibleAnimatedValue.x, y: this.accessibleAnimatedValue.y});
+            },
+            onPanResponderMove: (e, gestureState) => {
+                if (loop) {
+                    if (gestureState.dx < 0 && this.accessibleAnimatedValue.x < -1 * this.state.fullWidth) {
+                        this._animatedValue.setOffset({x: windowWidth, y: 0});
+                    } else if (gestureState.dx > 0 && this.accessibleAnimatedValue.x > 0) {
+                        this._animatedValue.setOffset({x: -1 * (this.state.fullWidth + windowWidth), y: 0});
+                    }
+                }
+                Animated.event([null, {dx: this._animatedValue.x}])(e, gestureState);
+            },
+            onPanResponderRelease: (e, gestureState) => {
+                this.onDoneSwiping(gestureState);
+            },
+            onPanResponderTerminate: (e, gestureState) => {
+                this.onDoneSwiping(gestureState);
+            },
+        });
+
+        this.state = {
+            fullWidth: this.fullWidth,
+            pagePositions: this.pagePositions,
+            currentPage: 0
+        };
+
+        this.findClosest = this.findClosest.bind(this);
+    }
+
+    get fullWidth(): number {
+        const {children} = this.props;
+
         if (!Array.isArray(children)) {
             return windowWidth;
         }
 
         return (children.length - 1) * windowWidth;
-    }, [children]);
-    const pagePositions = useMemo<number[]>(() => {
+    }
+
+    get pagePositions(): number[] {
+        const {children} = this.props;
+
         if (!Array.isArray(children)) {
             return [0];
         }
 
-        return children.map<number>((child, index) => windowWidth * -index);
-    }, [children]);
+        return children.map<number>((child, index) => windowWidth * (-1 * index));
+    }
 
-    // Memoized computed units
-    const computedScrollLockPage = useMemo(() => {
-        if( typeof scrollLockPage === 'number' ) {
-            return scrollLockPage;
+    get computedNormalChildViewStyles(): ViewStyle {
+        return getNormalChildViewStyles(windowWidth, windowHeight);
+    }
+
+    get computedExpandedChildViewStyles(): ViewStyle {
+        return getExpandedChildViewStyles(windowWidth, windowHeight);
+    }
+
+    get computedExpandStyles(): ViewStyle {
+        if (this.props.expandView) {
+            return getExpandedChildViewStyles(windowWidth, windowHeight, true);
         }
 
-        return 0;
-    }, [scrollLockPage]);
-    const computedResponderCaptureDx = useMemo(() => {
-        if( typeof responderCaptureDx === 'number' ) {
-            return responderCaptureDx;
-        }
+        return getNormalChildViewStyles(windowWidth, windowHeight, true);
+    }
 
-        return 60;
-    }, [responderCaptureDx]);
-    const computedExpandView = useMemo(() => {
-        if( typeof expandView === 'boolean' ) {
-            return expandView;
-        }
+    setAccessibleAnimatedValue(value: Location) {
+        this.accessibleAnimatedValue = value;
+    }
 
-        return false;
-    }, [expandView]);
-    const computedLoop = useMemo(() => {
-        if( typeof loop === 'boolean' ) {
-            return loop;
-        }
+    computeAnimatedSlideViewStyles(additionalTransforms: Animated.AnimatedInterpolation): ViewStyle {
+        return getAnimatedSlideViewStyles(additionalTransforms);
+    }
 
-        return false;
-    }, [loop]);
-
-    // States
-    const [currentPage, setCurrentPage] = useState(0);
-    const [, setScrollLockPageState] = useState(pagePositions[computedScrollLockPage]);
-    const [_value, setValue] = useState<Location>({x: 0, y: 0});
-
-    // Computed Styles
-    const computedNormalChildViewStyles = useMemo(() => getNormalChildViewStyles(windowWidth, windowHeight), []);
-    const computedExpandedChildViewStyles = useMemo(() => getExpandedChildViewStyles(windowWidth, windowHeight), []);
-    const computedExpandStyles = useMemo(() => computedExpandView ? getExpandedChildViewStyles(windowWidth, windowHeight, true) : getNormalChildViewStyles(windowWidth, windowHeight, true), [ computedExpandView ]);
-
-    // Refs
-    const _animatedValue = useRef(new Animated.ValueXY({x: 0, y: 0})).current;
-    const _scrollViewRef = useRef<typeof Animated.View>(null);
-    const _panResponder = useRef<PanResponderInstance>(PanResponder.create({
-        onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
-            return Math.abs(gestureState.dx) > computedResponderCaptureDx
-        },
-        onPanResponderGrant: () => {
-            if (callbackOnSwipe) {
-                callbackOnSwipe(true);
-            }
-            _animatedValue.stopAnimation();
-            _animatedValue.setOffset({x: _value.x, y: _value.y});
-        },
-        onPanResponderMove: (e, gestureState) => {
-            if (computedLoop) {
-                if (gestureState.dx < 0 && _value.x < -1 * fullWidth) {
-                    _animatedValue.setOffset({x: windowWidth, y: 0});
-                } else if (gestureState.dx > 0 && _value.x > 0) {
-                    _animatedValue.setOffset({x: -1 * (fullWidth + windowWidth), y: 0});
-                }
-            }
-            Animated.event([null, {dx: _animatedValue.x}])(e, gestureState);
-        },
-        onPanResponderRelease: (e, gestureState) => {
-            onDoneSwiping(gestureState);
-        },
-        onPanResponderTerminate: (e, gestureState) => {
-            onDoneSwiping(gestureState);
-        },
-    }));
-
-    // Cached style functions
-    const computeAnimatedSlideViewStyles = useCallback((additionalTransforms: Animated.AnimatedInterpolation) => getAnimatedSlideViewStyles(additionalTransforms), []);
-
-    // Cached functions
-    const findClosest = useCallback((horizontalPos: number) => {
+    findClosest(horizontalPos: number) {
         let minDiff = 1000;
         let selectedPage = 0;
 
-        for (let index in pagePositions) {
-            let currentDifference = Math.abs(horizontalPos - pagePositions[index]);
+        for (let index in this.state.pagePositions) {
+            let currentDifference = Math.abs(horizontalPos -  this.state.pagePositions[index]);
 
             if (currentDifference < minDiff) {
                 minDiff = currentDifference;
@@ -149,21 +163,25 @@ export default memo<CubeNavigationHorizontalProps>((props) => {
         }
 
         return selectedPage;
-    }, [pagePositions]);
-    const onDoneSwiping = useCallback((gestureState: PanResponderGestureState) => {
+    }
+
+    onDoneSwiping(gestureState: PanResponderGestureState) {
+        const {callbackOnSwipe, callBackAfterSwipe} = this.props;
+        const {pagePositions} = this.state;
+
         if (callbackOnSwipe) {
             callbackOnSwipe(false);
         }
 
         const mod = gestureState.dx > 0 ? 100 : -100;
 
-        const closestPage = findClosest((_animatedValue.x as any) + mod);
+        const closestPage = this.findClosest((this._animatedValue.x as any) + mod);
 
         let goTo = pagePositions[closestPage];
 
-        _animatedValue.flattenOffset();
+        this._animatedValue.flattenOffset();
 
-        Animated.spring(_animatedValue, {
+        Animated.spring(this._animatedValue, {
             toValue: {x: goTo, y: 0},
             friction: 3,
             tension: 0.6,
@@ -171,35 +189,47 @@ export default memo<CubeNavigationHorizontalProps>((props) => {
         }).start();
 
         setTimeout(() => {
-            setCurrentPage(closestPage);
+            this.setState({
+                currentPage: closestPage
+            });
+
             if (callBackAfterSwipe) {
                 callBackAfterSwipe(goTo, Math.abs(goTo / windowWidth));
             }
         }, 500);
-    }, [callbackOnSwipe, callBackAfterSwipe, pagePositions]);
-    const scrollTo = useCallback((page: number, animated: boolean) => {
+    }
+
+    scrollTo(page: number, animated: boolean) {
+        const {pagePositions} = this.state;
+
         const shouldBeAnimated = animated == undefined ? true : animated;
 
         if (shouldBeAnimated) {
-            Animated.spring(_animatedValue, {
+            Animated.spring(this._animatedValue, {
                 toValue: {x: pagePositions[page], y: 0},
                 friction: 4,
                 tension: 0.8,
                 useNativeDriver: false
             }).start();
         } else {
-            _animatedValue.setValue({x: pagePositions[page], y: 0});
+            this._animatedValue.setValue({x: pagePositions[page], y: 0});
         }
 
-        setCurrentPage(page);
-    }, [pagePositions]);
-    const _getTransformsFor = useCallback((index: number) => {
-        let scrollX = _animatedValue.x;
+        this.setState({
+            currentPage: page
+        });
+    }
+
+    _getTransformsFor(index: number) {
+        const {loop} = this.props;
+        const {fullWidth} = this.state;
+
+        let scrollX = this._animatedValue.x;
         let pageX = -1 * windowWidth * index;
         let loopVariable: any = (variable: number, sign = 1) => variable + Math.sign(sign) * (fullWidth + windowWidth);
 
         let padInput = (variables: any[]) => {
-            if (!computedLoop) {
+            if (!loop) {
                 return variables;
             }
 
@@ -209,7 +239,7 @@ export default memo<CubeNavigationHorizontalProps>((props) => {
             return returnedVariables;
         }
         let padOutput = (variables: any[]) => {
-            if (!computedLoop) {
+            if (!loop) {
                 return variables;
             }
 
@@ -241,9 +271,9 @@ export default memo<CubeNavigationHorizontalProps>((props) => {
             ]),
             outputRange: padOutput([
                 -1 * windowWidth - 1,
-                (-1 * windowWidth - 1) / PESPECTIVE,
+                (-1 * windowWidth - 1) / PERSPECTIVE,
                 0,
-                (windowWidth + 1) / PESPECTIVE,
+                (windowWidth + 1) / PERSPECTIVE,
                 +windowWidth + 1
             ]),
             extrapolate: 'clamp'
@@ -270,40 +300,36 @@ export default memo<CubeNavigationHorizontalProps>((props) => {
             ],
             opacity: opacity
         };
-    }, [fullWidth, computedLoop]);
-    const valueSetter = useCallback((value: Location) => {
-        setValue(value)
-    }, []);
+    }
 
-    // Effects
-    useEffect(() => {
-        const instanceId = _animatedValue.addListener(valueSetter);
+    componentDidMount() {
+        this.animatedListenerId = this._animatedValue.addListener(this.setAccessibleAnimatedValue);
+    }
 
-        return () => {
-            _animatedValue.removeListener(instanceId);
-        };
-    }, []);
-    useEffect(() => {
-        setScrollLockPageState(pagePositions[computedScrollLockPage]);
-    }, [computedScrollLockPage]);
+    componentWillUnmount() {
+        if( this.animatedListenerId !== null ) {
+            this._animatedValue.removeListener(this.animatedListenerId);
+        }
+    }
 
+    get renderChildren() {
+        const {children, expandView} = this.props;
+        const {currentPage} = this.state;
 
-    // Renderers
-    const renderChildren = useMemo(() => {
         if (!Array.isArray(children)) {
             return null;
         }
 
         return children.map((childItem, index) => {
-            let expandStyle = computedExpandView ? computedExpandedChildViewStyles : computedNormalChildViewStyles;
+            let expandStyle = expandView ? this.computedExpandedChildViewStyles : this.computedNormalChildViewStyles;
             let style = [(childItem as JSX.Element).props.style, expandStyle];
             let childProps: any = { i: index, style };
-            let element = React.cloneElement(childProps, props);
-            const transforms: any = _getTransformsFor(index);
+            let element = React.cloneElement(childProps, this.props);
+            const transforms: any = this._getTransformsFor(index);
 
             return (
                 <Animated.View
-                    style={computeAnimatedSlideViewStyles(transforms)}
+                    style={this.computeAnimatedSlideViewStyles(transforms)}
                     key={`childSlide- ${index}`}
                     pointerEvents={currentPage === index ? 'auto' : 'none'}
                 >
@@ -311,13 +337,15 @@ export default memo<CubeNavigationHorizontalProps>((props) => {
                 </Animated.View>
             );
         });
-    }, [children, computedExpandView, currentPage, computedExpandedChildViewStyles, computedNormalChildViewStyles]);
+    }
 
-    return (
-        <Animated.View style={rootAnimatedViewStyles} ref={_scrollViewRef} {..._panResponder.current.panHandlers}>
-            <Animated.View style={computedExpandStyles}>
-                {renderChildren}
+    render() {
+        return (
+            <Animated.View style={rootAnimatedViewStyles} ref={this._scrollViewRef} {...this._panResponder.panHandlers}>
+                <Animated.View style={this.computedExpandStyles}>
+                    {this.renderChildren}
+                </Animated.View>
             </Animated.View>
-        </Animated.View>
-    );
-});
+        )
+    }
+}

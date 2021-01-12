@@ -1,19 +1,19 @@
 <img src="imgs/logo.png" width="150px" />
 
-# react-native-3dcube-navigation
+# react-native-3dcube-navigation-typescript
 
 ### Installation
 
 ##### With Yarn
 
 ```bash
-$ yarn add react-native-3dcube-navigation
+$ yarn add react-native-3dcube-navigation-typescript
 ```
 
 ##### With NPM
 
 ```bash
-$ npm i react-native-3dcube-navigation --save
+$ npm i react-native-3dcube-navigation-typescript --save
 ```
 
 ### Demo
@@ -38,25 +38,6 @@ import { CubeNavigationHorizontal } from 'react-native-3dcube-navigation'
       <Text style={styles.text}>Horizontal Page 3</Text>
     </View>
   </CubeNavigationHorizontal>
-</View >
-```
-
-##### Vertical
-```js
-import { CubeNavigationVertical } from 'react-native-3dcube-navigation'
-
-<View style={styles.father} >
-  <CubeNavigationVertical ref={view => { this.cube = view; }}>
-    <View style={[styles.container, { backgroundColor: '#5CDB8B' }]}>
-      <Text style={styles.text}>Vertical Page 1</Text>
-    </View>
-    <View style={[styles.container, { backgroundColor: '#A3F989' }]}>
-      <Text style={styles.text}>Vertical Page 2</Text>
-    </View>
-    <View style={[styles.container, { backgroundColor: '#CBF941' }]}>
-      <Text style={styles.text}>Vertical Page 3</Text>
-    </View>
-  </CubeNavigationVertical>
 </View >
 ```
 
@@ -85,7 +66,7 @@ callBackAfterSwipe = (position, index){
   
 }
 
-render(){
+render() {
   return (
     <CubeNavigationHorizontal callBackAfterSwipe={this.callBackAfterSwipe}>
     </CubeNavigationHorizontal>

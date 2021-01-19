@@ -95,16 +95,6 @@ export default class CubeNavigationHorizontal extends PureComponent<CubeNavigati
         this.renderChildren = this.renderChildren.bind(this);
     }
 
-    shouldComponentUpdate(nextProps: Readonly<CubeNavigationHorizontalProps>): boolean {
-        return this.props.style !== nextProps.style ||
-            this.props.expandView !== nextProps.expandView ||
-            this.props.responderCaptureDx !== nextProps.responderCaptureDx ||
-            this.props.loop !== nextProps.loop ||
-            this.props.initialPage !== nextProps.initialPage ||
-            this.props.callBackAfterSwipe !== nextProps.callBackAfterSwipe ||
-            this.props.callbackOnSwipe !== nextProps.callbackOnSwipe;
-    }
-
     fullWidth(): number {
         const {children} = this.props;
 

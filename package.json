@@ -6,7 +6,7 @@
     "ios",
     "android"
   ],
-  "version": "1.0.19",
+  "version": "1.0.21",
   "description": "3D cube navigation typescript",
   "main": "index.js",
   "scripts": {

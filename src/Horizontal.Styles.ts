@@ -1,7 +1,15 @@
-import {Animated, StyleSheet, ViewStyle} from "react-native";
+import {Animated, StyleProp, StyleSheet, ViewStyle} from "react-native";
 
-export const rootAnimatedViewStyles: ViewStyle = {
-    position: 'absolute'
+export const getRootAnimatedViewStyles = (additionalStyles?: StyleProp<ViewStyle>): ViewStyle => {
+    const baseStyles: ViewStyle = {
+        position: 'absolute'
+    }
+
+    if( typeof additionalStyles === 'object' ) {
+        return {...baseStyles, ...additionalStyles as ViewStyle};
+    }
+
+    return baseStyles;
 }
 
 export const getExpandedChildViewStyles = (windowWidth: number, windowHeight: number, addBaseStyles: boolean = false): ViewStyle => {

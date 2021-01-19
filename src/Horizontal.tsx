@@ -1,4 +1,4 @@
-import React, {Component, RefObject} from 'react';
+import React, {PureComponent, RefObject} from 'react';
 import {
     Animated,
     Dimensions,
@@ -12,36 +12,16 @@ import {
 import {
     getAnimatedSlideViewStyles,
     getExpandedChildViewStyles,
-    getNormalChildViewStyles,
-    rootAnimatedViewStyles
+    getNormalChildViewStyles, getRootAnimatedViewStyles
 } from "./Horizontal.Styles";
+import {Location, CubeNavigationHorizontalProps, CubeNavigationHorizontalState} from "./Horizontal.Types";
 
 const {width: windowWidth, height: windowHeight} = Dimensions.get('window');
 
 const PERSPECTIVE = Platform.OS === 'ios' ? 2.38 : 2.16;
 const TR_POSITION = Platform.OS === 'ios' ? 2 : 1.4;
 
-export interface CubeNavigationHorizontalProps {
-    loop?: boolean;
-    expandView?: boolean;
-    responderCaptureDx?: number;
-    callBackAfterSwipe?: (targetXPosition: number, targetPage: number) => void;
-    callbackOnSwipe?: (isScroll: boolean) => void;
-    initialPage?: number;
-}
-
-interface CubeNavigationHorizontalState {
-    fullWidth: number;
-    pagePositions: number[];
-    currentPage: number;
-}
-
-interface Location {
-    x: number;
-    y: number;
-}
-
-export default class CubeNavigationHorizontal extends Component<CubeNavigationHorizontalProps, CubeNavigationHorizontalState> {
+export default class CubeNavigationHorizontal extends PureComponent<CubeNavigationHorizontalProps, CubeNavigationHorizontalState> {
     static defaultProps: CubeNavigationHorizontalProps = {
         loop: false,
         expandView: false,
@@ -113,6 +93,16 @@ export default class CubeNavigationHorizontal extends Component<CubeNavigationHo
         this.setAccessibleAnimatedValue = this.setAccessibleAnimatedValue.bind(this);
         this.findClosest = this.findClosest.bind(this);
         this.renderChildren = this.renderChildren.bind(this);
+    }
+
+    shouldComponentUpdate(nextProps: Readonly<CubeNavigationHorizontalProps>): boolean {
+        return this.props.style !== nextProps.style ||
+            this.props.expandView !== nextProps.expandView ||
+            this.props.responderCaptureDx !== nextProps.responderCaptureDx ||
+            this.props.loop !== nextProps.loop ||
+            this.props.initialPage !== nextProps.initialPage ||
+            this.props.callBackAfterSwipe !== nextProps.callBackAfterSwipe ||
+            this.props.callbackOnSwipe !== nextProps.callbackOnSwipe;
     }
 
     fullWidth(): number {
@@ -334,6 +324,10 @@ export default class CubeNavigationHorizontal extends Component<CubeNavigationHo
         }
 
         return children.map((childItem, index) => {
+            if( typeof childItem === 'undefined' || childItem === null ) {
+                return null;
+            }
+
             let expandStyle = expandView ? this.getComputedExpandedChildViewStyles() : this.getComputedNormalChildViewStyles();
             let style = [(childItem as JSX.Element).props.style, expandStyle];
             let childProps: any = { i: index, style };
@@ -353,6 +347,8 @@ export default class CubeNavigationHorizontal extends Component<CubeNavigationHo
     }
 
     render() {
+        const rootAnimatedViewStyles = getRootAnimatedViewStyles(this.props.style);
+
         return (
             <Animated.View style={rootAnimatedViewStyles} ref={this._scrollViewRef} {...this._panResponder.panHandlers}>
                 <Animated.View style={this.getComputedExpandStyles()}>
